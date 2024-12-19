@@ -24,3 +24,5 @@ C:\Users\codyb\Documents\Dev\SuikaGame\obj\Debug\net8.0\SuikaGame.pdb
 C:\Users\codyb\Documents\Dev\SuikaGame\obj\Debug\net8.0\SuikaGame.genruntimeconfig.cache
 C:\Users\codyb\Documents\Dev\SuikaGame\obj\Debug\net8.0\ref\SuikaGame.dll
 C:\Users\codyb\Documents\Dev\SuikaGame\bin\Debug\net8.0\Content\img.xnb
+C:\Users\codyb\Documents\Dev\SuikaGame\bin\Debug\net8.0\Content\fruit.xnb
+C:\Users\codyb\Documents\Dev\SuikaGame\obj\Debug\net8.0\SuikaGame.sourcelink.json

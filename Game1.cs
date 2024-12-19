@@ -6,33 +6,58 @@ using Microsoft.Xna.Framework.Input;
 
 namespace SuikaGame;
 
+
 public class Game1 : Game
 {
-    private GraphicsDeviceManager _graphics;
+    private readonly GraphicsDeviceManager _graphics;
     private SpriteBatch _spriteBatch;
+
+    private FruitManager fruitManager;
+    private Fruit currentFruit;
+    private Fruit nextFruit;
     
-    private Texture2D texture;
-    private bool mouseOnScreen = false;
-    private Vector2 mousePos;
-    private Vector2 lastPos;
+    private int score = 0;
+    private const float GRAVITY = 30f;
+    private const int DROP_VELOCITY_Y = 400;
+    private const float MAX_VELOCITY = 4000f;
+    
+    private const int WINDOW_WIDTH = 1600;
+    private const int WINDOW_HEIGHT = 900;
+    private const int PLAY_AREA_WIDTH = 800;
+    private const int PLAY_AREA_HEIGHT = 900;
+    private const int LEFT_WALL = (WINDOW_WIDTH - PLAY_AREA_WIDTH) / 2;
+    private const int RIGHT_WALL = (WINDOW_WIDTH + PLAY_AREA_WIDTH) / 2;
+    private const int NEXT_FRUIT_X = 1500;
+    private const int NEXT_FRUIT_Y = 100;
+    
+    private Texture2D playAreaBgTexture;
+    private Texture2D fruitTexture;
+    
+    private bool mouseLClickComplete = true;
+    private int mousePosX; // mouse X position
+    private int lastMousePosX = 0;
+    private float timeSinceDrop = 0f;
+    private bool dropped = false;
     
     public Game1()
     {
         _graphics = new GraphicsDeviceManager(this);
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
-        IsFixedTimeStep = false; // Allow dynamic frame rates
-
+        IsFixedTimeStep = false;
+        _graphics.PreferredBackBufferWidth = WINDOW_WIDTH;  
+        _graphics.PreferredBackBufferHeight = WINDOW_HEIGHT;
     }
 
     protected override void Initialize()
     {
-        // TODO: Add your initialization logic here
         _graphics.SynchronizeWithVerticalRetrace = true;
         _graphics.ApplyChanges(); 
         
-        lastPos = new Vector2(0, 0);
+        currentFruit = new Fruit(FruitType.Cranberry, 0, 0);
+        nextFruit = new Fruit(score, NEXT_FRUIT_X, NEXT_FRUIT_Y);
 
+        fruitManager = new FruitManager();
         
         base.Initialize();
     }
@@ -40,46 +65,25 @@ public class Game1 : Game
     protected override void LoadContent()
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
+        fruitTexture = Content.Load<Texture2D>("fruit");
 
-        // TODO: use this.Content to load your game content here
-        texture = Content.Load<Texture2D>("img");
+        playAreaBgTexture = new Texture2D(GraphicsDevice, 1, 1);
+        playAreaBgTexture.SetData(new[] { Color.White });
     }
 
     protected override void Update(GameTime gameTime)
     {
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
-            Keyboard.GetState().IsKeyDown(Keys.Escape))
-            Exit();
+        float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        mousePosX = Mouse.GetState().X;
 
-        MouseState mouseState = Microsoft.Xna.Framework.Input.Mouse.GetState();
-        mousePos = new Vector2(mouseState.X, mouseState.Y);
+        // Update current fruit
+        currentFruit.X = calcCurrentFruitX();
+        handleMouseClick();
 
-        if (lastPos != mousePos && mousePos.X < 0)
-        {
-            mousePos.X = 0;
-        }
-        else if (mousePos.X > (_graphics.PreferredBackBufferWidth - 100))
-        {
-            mousePos.X = _graphics.PreferredBackBufferWidth - 100;
-        }
+        // Update dropped fruit
+        applyFruitPhysics(deltaTime);
         
-        if (lastPos != mousePos) {
-            Console.WriteLine($"{mousePos.X}, {mousePos.Y}");
-        }
-
-        if (Keyboard.GetState().IsKeyDown(Keys.Space))
-        {
-            Console.WriteLine("Space");
-        }
-        
-        if (Mouse.GetState().LeftButton == ButtonState.Pressed)
-        {
-            Console.WriteLine("Mouse Button Pressed");
-        }
-        
-        // TODO: Add your update logic here
-
-        lastPos = mousePos;
+        lastMousePosX = mousePosX;
         
         // Calculate and log FPS
         //float fps = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -91,17 +95,99 @@ public class Game1 : Game
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(Color.CornflowerBlue);
-
-        // TODO: Add your drawing code here
-
-        //_spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        _spriteBatch.Begin();
-
         
-        _spriteBatch.Draw(texture, new Rectangle((int)mousePos.X, 0,100, 100), Color.White);
+        _spriteBatch.Begin();
+        _spriteBatch.Draw(playAreaBgTexture, new Rectangle(LEFT_WALL, 0, PLAY_AREA_WIDTH, PLAY_AREA_HEIGHT), Color.White);
+        
+        _spriteBatch.Draw(fruitTexture, new Rectangle(nextFruit.getCenterX(), nextFruit.getCenterY() ,nextFruit.Diameter, nextFruit.Diameter), nextFruit.Color);
+        _spriteBatch.Draw(fruitTexture, new Rectangle(currentFruit.X, currentFruit.Y ,currentFruit.Diameter, currentFruit.Diameter), currentFruit.Color);
+
+        foreach (Fruit fruit in fruitManager.Fruits)
+        {
+            _spriteBatch.Draw(fruitTexture, new Rectangle(fruit.X, fruit.Y ,fruit.Diameter, fruit.Diameter), fruit.Color);
+        }
         
         _spriteBatch.End();
         
         base.Draw(gameTime);
     }
+
+    private void handleMouseClick()
+    {
+        if (mouseLClickComplete && Mouse.GetState().LeftButton == ButtonState.Pressed)
+        {
+            currentFruit.VelocityY = DROP_VELOCITY_Y + currentFruit.Mass;
+            fruitManager.AddFruit(currentFruit);
+
+            if (mousePosX - nextFruit.Radius <= LEFT_WALL)
+            {
+                nextFruit.X = LEFT_WALL;
+            }
+            else if (mousePosX + nextFruit.Diameter >= RIGHT_WALL)
+            {
+                nextFruit.X = RIGHT_WALL - nextFruit.Diameter;
+            }
+            else
+            {
+                nextFruit.X = mousePosX - nextFruit.Radius;
+            }
+            
+            nextFruit.Y = currentFruit.Y;
+            currentFruit = nextFruit;
+            nextFruit = new Fruit(score, NEXT_FRUIT_X, NEXT_FRUIT_Y);
+            
+            mouseLClickComplete = false;
+        }
+        
+        if (!mouseLClickComplete && Mouse.GetState().LeftButton == ButtonState.Released)
+        {
+            mouseLClickComplete = true;
+        }
+    }
+
+    private int calcCurrentFruitX()
+    {
+        // Mouse hasn't moved since last update
+        if (lastMousePosX == mousePosX)
+        {
+            return currentFruit.X;
+        }
+        
+        // Mouse outside left bounds
+        if (mousePosX < LEFT_WALL + currentFruit.Radius)
+        {
+            return LEFT_WALL;
+        } 
+        
+        // Mouse outside right bounds
+        if (mousePosX > RIGHT_WALL - currentFruit.Radius)
+        {   
+            return RIGHT_WALL - currentFruit.Diameter;
+        }
+        
+        // Mouse moved and is inside bounds
+        return mousePosX - currentFruit.Radius;
+    }
+
+    private void applyFruitPhysics(float deltaTime)
+    {
+        foreach (Fruit fruit in fruitManager.Fruits)
+        {
+            fruit.VelocityY += GRAVITY;
+            
+            fruit.Y += (int)((fruit.VelocityY) * deltaTime);
+
+            if (fruit.VelocityY > MAX_VELOCITY)
+            {
+                fruit.VelocityY = MAX_VELOCITY;
+            }
+            
+            if (fruit.Y + fruit.Diameter > WINDOW_HEIGHT)
+            {
+                fruit.Y = WINDOW_HEIGHT - fruit.Diameter;
+                fruit.VelocityY = 0;
+            }
+        }
+    }
+    
 }
